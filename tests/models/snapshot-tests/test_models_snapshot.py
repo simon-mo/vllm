@@ -16,20 +16,19 @@ MODELS = [
     "facebook/opt-125m",
     "meta-llama/Llama-2-7b-hf",
     "mistralai/Mistral-7B-v0.1",
-    # "Deci/DeciLM-7b",  # NOTE(simon): DeciLMForCausalLM.__init__() takes from 1 to 3 positional arguments but 4 were given
-    # "tiiuae/falcon-7b", # NOTE(simon): ValueError: Total number of attention heads (71) must be divisible by tensor parallel size (2)
+    #"Deci/DeciLM-7b",  # NOTE(simon): DeciLMForCausalLM.__init__() takes from 1 to 3 positional arguments but 4 were given, NOTE(sahil): vLLM vs HF Outputs not matching for 6/8 test prompts
+    #"tiiuae/falcon-7b", # NOTE(simon): ValueError: Total number of attention heads (71) must be divisible by tensor parallel size (2)
     "gpt2",
     "bigcode/tiny_starcoder_py",
     "EleutherAI/gpt-j-6b",
     "EleutherAI/pythia-70m",
-    # "bigscience/bloom-560m", # NOTE(simon): some nccl error when distributing this tiny model
-    # "mosaicml/mpt-7b", # NOTE(simon) can't run this model on latest huggingface
+    "bigscience/bloom-560m",
+    "mosaicml/mpt-7b",
     "microsoft/phi-2",
     "stabilityai/stablelm-3b-4e1t",
 ]
 DTYPE = "float"
 MAX_TOKENS = 128
-
 
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("dtype", [DTYPE])
@@ -53,6 +52,7 @@ def test_model_snapshot(
         enforce_eager=True,
         max_model_len=1024,
     )
+    example_prompts = [i.strip() for i in example_prompts]
     vllm_outputs = vllm_model.generate_greedy(example_prompts, max_tokens)
     del vllm_model
 

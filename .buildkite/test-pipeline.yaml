@@ -38,7 +38,7 @@ steps:
   working_dir: "/vllm-workspace/tests/models/snapshot-tests"
   num_gpus: 2
   commands:
-    - pytest -v -s test_models_snapshot.py
+    - pytest -v -s --forked test_models_snapshot.py
 
 - label: Prefix Caching Test
   commands:
