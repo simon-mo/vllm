@@ -115,6 +115,20 @@ class ModelConfig:
             self.download_dir = model_path
             self.tokenizer = model_path
 
+        if self.model == "noop":
+            self.hf_config = PretrainedConfig(
+                architectures=["NoopModelForPerformanceBenchmark"],
+                num_attention_heads=12,
+                num_hidden_layers=12,
+                hidden_size=768,
+                vocab_size=50272,
+                max_position_embeddings=2048,
+                torch_dtype=torch.float16,
+            )
+            self.dtype = torch.float16
+            self.max_model_len = 2048
+            return
+
         self.hf_config = get_config(self.model, trust_remote_code, revision,
                                     code_revision)
         self.dtype = _get_and_verify_dtype(self.hf_config, dtype)
@@ -393,7 +407,7 @@ class CacheConfig:
 @dataclass
 class TokenizerPoolConfig:
     """Configuration for the tokenizer pool.
-    
+
     Args:
         pool_size: Number of tokenizer workers in the pool.
         pool_type: Type of the pool.
@@ -417,9 +431,9 @@ class TokenizerPoolConfig:
         tokenizer_pool_extra_config: Optional[Union[str, dict]]
     ) -> Optional["TokenizerPoolConfig"]:
         """Create a TokenizerPoolConfig from the given parameters.
-        
+
         If tokenizer_pool_size is 0, return None.
-        
+
         Args:
             tokenizer_pool_size: Number of tokenizer workers in the pool.
             tokenizer_pool_type: Type of the pool.
