@@ -273,18 +273,33 @@ class SamplingTensors:
             dtype=torch.long,
             pin_memory=pin_memory,
         )
+
+        import time
+
+        start_time = time.perf_counter()
+
         prompt_tensor = torch.tensor(
             prompt_padded_tokens,
             device="cpu",
             dtype=torch.long,
             pin_memory=pin_memory,
         )
+        print(f"prompt_tensor shape {prompt_tensor.shape}")
+
         output_tensor = torch.tensor(
             output_padded_tokens,
             device="cpu",
             dtype=torch.long,
             pin_memory=pin_memory,
         )
+        print(f"output_tensor shape {output_tensor.shape}")
+
+        end_time = time.perf_counter()
+
+        execution_time_ms = (
+            end_time - start_time) * 1000  # convert seconds to milliseconds
+
+        print(f"Execution time for output_tensor: {execution_time_ms} ms")
         # need to transpose and make contiguous to
         # copy the tensor correctly.
         # [batch_size, n_seeds] -> [n_seeds, batch_size]

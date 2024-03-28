@@ -629,10 +629,11 @@ class LLMEngine:
         seq_group_metadata_list, scheduler_outputs = self.scheduler.schedule()
 
         if not scheduler_outputs.is_empty():
-            output = self.model_executor.execute_model(
-                seq_group_metadata_list, scheduler_outputs.blocks_to_swap_in,
-                scheduler_outputs.blocks_to_swap_out,
-                scheduler_outputs.blocks_to_copy)
+            output = None
+            # output = self.model_executor.execute_model(
+            #     seq_group_metadata_list, scheduler_outputs.blocks_to_swap_in,
+            #     scheduler_outputs.blocks_to_swap_out,
+            #     scheduler_outputs.blocks_to_copy)
         else:
             output = []
 

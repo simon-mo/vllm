@@ -137,10 +137,10 @@ class OpenAIServingCompletion(OpenAIServing):
 
             for i, prompt in enumerate(prompts):
                 if prompt_is_tokens:
-                    input_ids = self._validate_prompt_and_tokenize(
+                    input_ids = await self._validate_prompt_and_tokenize(
                         request, prompt_ids=prompt)
                 else:
-                    input_ids = self._validate_prompt_and_tokenize(
+                    input_ids = await self._validate_prompt_and_tokenize(
                         request, prompt=prompt)
 
                 generators.append(

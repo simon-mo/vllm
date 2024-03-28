@@ -168,7 +168,11 @@ class OpenAIServing:
         # if _check_model has been called earlier, this will be unreachable
         raise ValueError("The model `{request.model}` does not exist.")
 
-    def _validate_prompt_and_tokenize(
+    async def _tokenize_in_thread(self, text: str):
+        return await asyncio.get_event_loop().run_in_executor(
+            None, self.tokenizer, text)
+
+    async def _validate_prompt_and_tokenize(
             self,
             request: Union[ChatCompletionRequest, CompletionRequest],
             prompt: Optional[str] = None,
@@ -179,8 +183,10 @@ class OpenAIServing:
             raise ValueError(
                 "Only one of prompt or prompt_ids should be provided.")
 
-        input_ids = prompt_ids if prompt_ids is not None else self.tokenizer(
-            prompt).input_ids
+        # input_ids = prompt_ids if prompt_ids is not None else self.tokenizer(
+        #     prompt).input_ids
+        input_ids = prompt_ids if prompt_ids is not None else (
+            await self._tokenize_in_thread(prompt)).input_ids
         token_num = len(input_ids)
 
         if request.max_tokens is None:
