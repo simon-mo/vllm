@@ -359,7 +359,10 @@ class AsyncLLMEngine:
         distributed_executor_backend = (
             engine_config.parallel_config.distributed_executor_backend)
 
-        if engine_config.device_config.device_type == "neuron":
+        if engine_args.simulation_mode:
+            from vllm.executor.simulated_executor import SimulatedExecutorAsync
+            executor_class = SimulatedExecutorAsync
+        elif engine_config.device_config.device_type == "neuron":
             from vllm.executor.neuron_executor import NeuronExecutorAsync
             executor_class = NeuronExecutorAsync
         elif engine_config.device_config.device_type == "cpu":

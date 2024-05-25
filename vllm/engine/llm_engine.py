@@ -280,7 +280,10 @@ class LLMEngine:
             engine_config.parallel_config.distributed_executor_backend)
 
         # Initialize the cluster and specify the executor class.
-        if engine_config.device_config.device_type == "neuron":
+        if engine_args.simulation_mode:
+            from vllm.executor.simulated_executor import SimulatedExecutor
+            executor_class = SimulatedExecutor
+        elif engine_config.device_config.device_type == "neuron":
             from vllm.executor.neuron_executor import NeuronExecutor
             executor_class = NeuronExecutor
         elif engine_config.device_config.device_type == "cpu":

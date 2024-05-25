@@ -91,6 +91,9 @@ class EngineArgs:
     ngram_prompt_lookup_max: Optional[int] = None
     ngram_prompt_lookup_min: Optional[int] = None
 
+    # Simulation mode
+    simulation_mode: bool = False
+
     def __post_init__(self):
         if self.tokenizer is None:
             self.tokenizer = self.model
@@ -538,6 +541,10 @@ class EngineArgs:
             "will also be used in `model_name` tag content of "
             "prometheus metrics, if multiple names provided, metrics"
             "tag will take the first one.")
+
+        parser.add_argument('--simulation-mode',
+                            action='store_true',
+                            help='Enable simulation mode for the engine.')
 
         return parser
 
