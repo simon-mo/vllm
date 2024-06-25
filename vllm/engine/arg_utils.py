@@ -100,8 +100,10 @@ class EngineArgs:
     ngram_prompt_lookup_max: Optional[int] = None
     ngram_prompt_lookup_min: Optional[int] = None
 
-    qlora_adapter_name_or_path: Optional[str] = None
+    # Simulation mode
+    simulation_mode: bool = False
 
+    qlora_adapter_name_or_path: Optional[str] = None
     otlp_traces_endpoint: Optional[str] = None
 
     def __post_init__(self):
@@ -607,6 +609,10 @@ class EngineArgs:
             type=str,
             default=None,
             help='Target URL to which OpenTelemetry traces will be sent.')
+
+        parser.add_argument('--simulation-mode',
+                            action='store_true',
+                            help='Enable simulation mode for the engine.')
 
         return parser
 

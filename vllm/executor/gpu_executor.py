@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from vllm.executor.executor_base import ExecutorAsyncBase, ExecutorBase
@@ -88,7 +89,23 @@ class GPUExecutor(ExecutorBase):
     def execute_model(
         self, execute_model_req: ExecuteModelRequest
     ) -> List[Union[SamplerOutput, PoolerOutput]]:
+        prefill_tokens = sum(
+            seq_group.token_chunk_size
+            for seq_group in execute_model_req.seq_group_metadata_list
+            if seq_group.is_prompt)
+        decode_tokens = sum(
+            seq_group.token_chunk_size
+            for seq_group in execute_model_req.seq_group_metadata_list
+            if not seq_group.is_prompt)
+
+        start = time.perf_counter_ns()
         output = self.driver_worker.execute_model(execute_model_req)
+        duration = (time.perf_counter_ns() - start) / 1e6
+
+        print(
+            f"prefill_tokens: {prefill_tokens}, decode_tokens: {decode_tokens}, duration_ms: {duration}"
+        )
+        self.simulation_profile.record(prefill_tokens, decode_tokens, duration)
         return output
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
