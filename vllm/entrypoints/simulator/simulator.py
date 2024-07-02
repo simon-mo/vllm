@@ -23,12 +23,12 @@ class vLLMSimulator:
         self.generator_finished = False
         self.enqueued = simpy.Store(self.env, capacity=1)
 
-    def _process_run_engine(self, is_profile):
+    def _process_run_engine(self, engine, is_profile):
         start_time = time.time()
         while not self.generator_finished or self.engine.has_unfinished_requests(
         ):
             start = time.time()
-            outputs = self.engine.step()
+            outputs = engine.step()
             print("---")
             for output in outputs:
                 output_metrics = {
@@ -54,7 +54,7 @@ class vLLMSimulator:
                     yield self.enqueued.get()
                 yield self.env.timeout(0.0006)  # fixed scheduler overhead
 
-    def _process_request_generator(self, workloads):
+    def _process_request_generator(self, engine, workloads):
         curr_time = self.env.now
         # assume workloads are sorted by arrival time
         for i, workload in enumerate(workloads):
@@ -62,10 +62,9 @@ class vLLMSimulator:
                 assert self.env.now < workload.arrival_time
                 yield self.env.timeout(workload.arrival_time - curr_time)
 
-            self.engine.add_request(
+            engine.add_request(
                 request_id=str(i),
-                prompt=None,
-                prompt_token_ids=[0] * workload.num_input_tokens,
+                inputs=dict(prompt_token_ids=[0] * workload.num_input_tokens),
                 params=SamplingParams(max_tokens=workload.num_output_tokens,
                                       ignore_eos=True),
             )
@@ -84,8 +83,8 @@ class vLLMSimulator:
         profile = SimulationProfile()
         self.profile_engine.model_executor.simulation_profile = profile
 
-        self.env.process(self._process_request_generator(workloads))
-        self.env.process(self._process_run_engine(is_profile=True))
+        self.env.process(self._process_request_generator(self.profile_engine, workloads))
+        self.env.process(self._process_run_engine(self.profile_engine, is_profile=True))
         self.env.run()
 
         profile.save("profile.json")
