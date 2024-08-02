@@ -1,12 +1,13 @@
 import json
+from collections import defaultdict
 
 
 class SimulationProfile:
     """Profiling data structure capturing the timing of a single forward pass."""
 
     def __init__(self):
-        self.prefill_timing = {}
-        self.decode_timing = {}
+        self.prefill_timing = defaultdict(list)
+        self.decode_timing = defaultdict(list)
 
     def record(self, prefill_tokens, decode_tokens, duration_ms):
         # TODO: use histogram, and sampling
@@ -14,9 +15,9 @@ class SimulationProfile:
         assert not all([prefill_tokens, decode_tokens]), "chunked prefill todo"
 
         if prefill_tokens:
-            self.prefill_timing[str(prefill_tokens)] = duration_ms
+            self.prefill_timing[str(prefill_tokens)].append(duration_ms)
         else:
-            self.decode_timing[str(decode_tokens)] = duration_ms
+            self.decode_timing[str(decode_tokens)].append(duration_ms)
 
     def get_estimate(self, prefill_tokens, decode_tokens):
         # TODO: sample
@@ -24,9 +25,9 @@ class SimulationProfile:
         assert not all([prefill_tokens, decode_tokens]), "chunked prefill todo"
 
         if prefill_tokens:
-            return self.prefill_timing[str(prefill_tokens)]
+            return self.prefill_timing[str(prefill_tokens)][0]
         else:
-            return self.decode_timing[str(decode_tokens)]
+            return self.decode_timing[str(decode_tokens)][0]
 
     def save(self, path):
         with open(path, "w") as f:

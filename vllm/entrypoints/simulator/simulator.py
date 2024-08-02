@@ -12,7 +12,7 @@ class vLLMSimulator:
 
     def __init__(self, model="facebook/opt-125m") -> None:
         self.profile_engine = LLMEngine.from_engine_args(
-            EngineArgs(model=model))
+            EngineArgs(model=model, enforce_eager=True))
         self.simulated_engine = LLMEngine.from_engine_args(
             EngineArgs(model=model, simulation_mode=True))
 
@@ -89,6 +89,46 @@ class vLLMSimulator:
         self.env.run()
 
         profile.save("profile.json")
+    
+
+    def profile_tokens_curve(self, workload_batch, n_trials=1):
+        profile = SimulationProfile()
+        self.profile_engine.model_executor.simulation_profile = profile
+        idx = -1
+
+        # warmup
+        for batch in workload_batch:
+            for workload in batch:
+                idx += 1
+                self.profile_engine.add_request(
+                    request_id=str(idx),
+                    inputs=dict(prompt_token_ids=[0] * workload.num_input_tokens),
+                    params=SamplingParams(max_tokens=max(workload.num_output_tokens, 1),
+                                            ignore_eos=True),
+                )
+            while self.profile_engine.has_unfinished_requests():
+                self.profile_engine.step()
+
+        # real run
+
+        profile = SimulationProfile()
+        self.profile_engine.model_executor.simulation_profile = profile
+
+
+        for batch in workload_batch:
+            for _ in range(n_trials):
+                for workload in batch:
+                    idx += 1
+                    self.profile_engine.add_request(
+                        request_id=str(idx),
+                        inputs=dict(prompt_token_ids=[0] * workload.num_input_tokens),
+                        params=SamplingParams(max_tokens=max(workload.num_output_tokens, 1),
+                                            ignore_eos=True),
+                    )
+                while self.profile_engine.has_unfinished_requests():
+                    self.profile_engine.step()
+        
+        return profile
     
 
 
