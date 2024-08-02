@@ -6,9 +6,10 @@ from vllm.executor.executor_base import ExecutorAsyncBase, ExecutorBase
 from vllm.sequence import CompletionSequenceGroupOutput, SequenceOutput, Logprob
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, ParallelConfig, SchedulerConfig,
-                         SpeculativeConfig, VisionLanguageConfig)
+                         SpeculativeConfig)
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
 
 logger = init_logger(__name__)
@@ -22,7 +23,6 @@ class SimulatedExecutor(ExecutorBase):
     device_config: DeviceConfig
     load_config: LoadConfig
     lora_config: Optional[LoRAConfig]
-    vision_language_config: Optional[VisionLanguageConfig]
     speculative_config: Optional[SpeculativeConfig]
 
     env = simpy.Environment
@@ -81,13 +81,29 @@ class SimulatedExecutor(ExecutorBase):
         return [SamplerOutput(outputs=out)]
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def remove_lora(self, lora_id: int) -> bool:
-        raise NotImplementedError()
+        raise NotImplementedError
+
+    def pin_lora(self, lora_id: int) -> bool:
+        raise NotImplementedError  # type: ignore
 
     def list_loras(self) -> Set[int]:
-        raise NotImplementedError()
+        raise NotImplementedError
+
+    def add_prompt_adapter(
+            self, prompt_adapter_request: PromptAdapterRequest) -> bool:
+        raise NotImplementedError
+
+    def remove_prompt_adapter(self, prompt_adapter_id: int) -> bool:
+        raise NotImplementedError
+
+    def pin_prompt_adapter(self, prompt_adapter_id: int) -> bool:
+        raise NotImplementedError  # type: ignore
+
+    def list_prompt_adapters(self) -> Set[int]:
+        raise NotImplementedError
 
     def check_health(self) -> None:
         return

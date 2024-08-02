@@ -29,6 +29,8 @@ class vLLMSimulator:
         ):
             start = time.time()
             outputs = engine.step()
+            if len(outputs) == 0:
+                continue
             print("---")
             for output in outputs:
                 output_metrics = {
@@ -73,8 +75,7 @@ class vLLMSimulator:
                 # notify the engine that there is a new request
                 self.enqueued.put(i)
 
-        global generator_finished
-        generator_finished = True
+        self.generator_finished = True
         if len(self.enqueued.items) == 0:
             # notify the engine that there is a new request
             self.enqueued.put(i)
@@ -88,6 +89,8 @@ class vLLMSimulator:
         self.env.run()
 
         profile.save("profile.json")
+    
+
 
 
 # if __name__ == "__main__":

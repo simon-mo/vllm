@@ -171,6 +171,7 @@ class LLMEngine:
         log_stats: bool,
         usage_context: UsageContext = UsageContext.ENGINE_CONTEXT,
         stat_loggers: Optional[Dict[str, StatLoggerBase]] = None,
+        simulation_mode: bool = False,
     ) -> None:
         logger.info(
             "Initializing an LLM engine (v%s) with config: "
@@ -352,6 +353,8 @@ class LLMEngine:
                     self.get_tokenizer_for_seq,
                 ),
             ))
+        
+        self.simulation_mode = simulation_mode
 
     def _initialize_kv_caches(self) -> None:
         """Initialize the KV cache in the worker(s).
@@ -381,12 +384,10 @@ class LLMEngine:
         distributed_executor_backend = (
             engine_config.parallel_config.distributed_executor_backend)
         # Initialize the cluster and specify the executor class.
-<<<<<<< HEAD
-        if engine_args.simulation_mode:
+        if engine_config.simulation_mode:
             from vllm.executor.simulated_executor import SimulatedExecutor
             executor_class = SimulatedExecutor
-=======
-        if isinstance(distributed_executor_backend, type):
+        elif isinstance(distributed_executor_backend, type):
             if not issubclass(distributed_executor_backend, ExecutorBase):
                 raise TypeError(
                     "distributed_executor_backend must be a subclass of "
@@ -394,7 +395,6 @@ class LLMEngine:
             if distributed_executor_backend.uses_ray:  # type: ignore
                 initialize_ray_cluster(engine_config.parallel_config)
             executor_class = distributed_executor_backend
->>>>>>> 6a11fdfbb8d6701c7ad38648aead23d8cbe6aac5
         elif engine_config.device_config.device_type == "neuron":
             from vllm.executor.neuron_executor import NeuronExecutor
             executor_class = NeuronExecutor

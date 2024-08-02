@@ -1613,6 +1613,7 @@ class EngineConfig:
     decoding_config: Optional[DecodingConfig]
     observability_config: Optional[ObservabilityConfig]
     prompt_adapter_config: Optional[PromptAdapterConfig]
+    simulation_mode: bool = False
 
     def __post_init__(self):
         """Verify configs are valid & consistent with each other.

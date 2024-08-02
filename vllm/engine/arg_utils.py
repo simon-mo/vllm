@@ -881,6 +881,7 @@ class EngineArgs:
             decoding_config=decoding_config,
             observability_config=observability_config,
             prompt_adapter_config=prompt_adapter_config,
+            simulation_mode=self.simulation_mode,
         )
 
 
