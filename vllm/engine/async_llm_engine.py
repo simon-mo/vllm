@@ -395,7 +395,11 @@ class AsyncLLMEngine:
             cls, engine_config: EngineConfig) -> Type[ExecutorAsyncBase]:
         distributed_executor_backend = (
             engine_config.parallel_config.distributed_executor_backend)
-        if isinstance(distributed_executor_backend, type):
+
+        if engine_config.simulation_mode:
+            from vllm.executor.simulated_executor import SimulatedExecutorAsync
+            executor_class = SimulatedExecutorAsync
+        elif isinstance(distributed_executor_backend, type):
             if not issubclass(distributed_executor_backend, ExecutorAsyncBase):
                 raise TypeError(
                     "distributed_executor_backend must be a subclass of "
@@ -407,11 +411,15 @@ class AsyncLLMEngine:
             from vllm.executor.neuron_executor import NeuronExecutorAsync
             executor_class = NeuronExecutorAsync
         elif engine_config.device_config.device_type == "tpu":
-            from vllm.executor.tpu_executor import TPUExecutorAsync
-            executor_class = TPUExecutorAsync
+            if distributed_executor_backend == "ray":
+                initialize_ray_cluster(engine_config.parallel_config)
+                from vllm.executor.ray_tpu_executor import RayTPUExecutorAsync
+                executor_class = RayTPUExecutorAsync
+            else:
+                assert distributed_executor_backend is None
+                from vllm.executor.tpu_executor import TPUExecutorAsync
+                executor_class = TPUExecutorAsync
         elif engine_config.device_config.device_type == "cpu":
-            assert distributed_executor_backend is None, (
-                "Distributed execution is not supported with the CPU backend.")
             from vllm.executor.cpu_executor import CPUExecutorAsync
             executor_class = CPUExecutorAsync
         elif engine_config.device_config.device_type == "openvino":

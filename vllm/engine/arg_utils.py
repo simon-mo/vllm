@@ -110,13 +110,19 @@ class EngineArgs:
     speculative_disable_by_batch_size: Optional[int] = None
     ngram_prompt_lookup_max: Optional[int] = None
     ngram_prompt_lookup_min: Optional[int] = None
+
     spec_decoding_acceptance_method: str = 'rejection_sampler'
     typical_acceptance_sampler_posterior_threshold: Optional[float] = None
     typical_acceptance_sampler_posterior_alpha: Optional[float] = None
     qlora_adapter_name_or_path: Optional[str] = None
     disable_logprobs_during_spec_decoding: Optional[bool] = None
 
+    qlora_adapter_name_or_path: Optional[str] = None
     otlp_traces_endpoint: Optional[str] = None
+    
+    # Simulation mode
+    simulation_mode: bool = False
+
 
     def __post_init__(self):
         if self.tokenizer is None:
@@ -632,9 +638,9 @@ class EngineArgs:
             '--preemption-mode',
             type=str,
             default=None,
-            help='If \'recompute\', the engine performs preemption by block '
-            'swapping; If \'swap\', the engine performs preemption by block '
-            'swapping.')
+            help='If \'recompute\', the engine performs preemption by '
+            'recomputing; If \'swap\', the engine performs preemption by '
+            'block swapping.')
 
         parser.add_argument(
             "--served-model-name",
@@ -660,6 +666,10 @@ class EngineArgs:
             type=str,
             default=None,
             help='Target URL to which OpenTelemetry traces will be sent.')
+
+        parser.add_argument('--simulation-mode',
+                            action='store_true',
+                            help='Enable simulation mode for the engine.')
 
         return parser
 
@@ -754,10 +764,14 @@ class EngineArgs:
                 use_sliding_window = (model_config.get_sliding_window()
                                       is not None)
                 use_spec_decode = self.speculative_model is not None
+                has_seqlen_agnostic_layers = (
+                    model_config.contains_seqlen_agnostic_layers(
+                        parallel_config))
                 if (is_gpu and not use_sliding_window and not use_spec_decode
                         and not self.enable_lora
                         and not self.enable_prompt_adapter
-                        and not self.enable_prefix_caching):
+                        and not self.enable_prefix_caching
+                        and not has_seqlen_agnostic_layers):
                     self.enable_chunked_prefill = True
                     logger.warning(
                         "Chunked prefill is enabled by default for models with "
@@ -867,6 +881,7 @@ class EngineArgs:
             decoding_config=decoding_config,
             observability_config=observability_config,
             prompt_adapter_config=prompt_adapter_config,
+            simulation_mode=self.simulation_mode,
         )
 
 

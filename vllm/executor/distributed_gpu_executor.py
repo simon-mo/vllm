@@ -7,6 +7,7 @@ from vllm.executor.gpu_executor import GPUExecutor
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
+from vllm.entrypoints.simulator.profile import profile_hook
 
 logger = init_logger(__name__)
 
@@ -73,8 +74,10 @@ class DistributedGPUExecutor(GPUExecutor):
                 **self.extra_execute_model_run_workers_kwargs)
 
         # Only the driver worker returns the sampling results.
-        driver_outputs = self._driver_execute_model(execute_model_req)
+        with profile_hook(execute_model_req, self.simulation_profile):
+            driver_outputs = self._driver_execute_model(execute_model_req)
         assert driver_outputs is not None
+
         return driver_outputs
 
     def stop_remote_worker_execution_loop(self) -> None:
