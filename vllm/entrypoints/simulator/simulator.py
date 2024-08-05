@@ -10,11 +10,11 @@ from vllm.entrypoints.simulator.profile import SimulationProfile
 
 class vLLMSimulator:
 
-    def __init__(self, model="facebook/opt-125m") -> None:
+    def __init__(self, model="facebook/opt-125m", **engine_args) -> None:
         self.profile_engine = LLMEngine.from_engine_args(
-            EngineArgs(model=model, enforce_eager=True))
+            EngineArgs(model=model, enforce_eager=True, **engine_args))
         self.simulated_engine = LLMEngine.from_engine_args(
-            EngineArgs(model=model, simulation_mode=True))
+            EngineArgs(model=model, simulation_mode=True, **engine_args))
 
         self._reset()
 
@@ -98,7 +98,11 @@ class vLLMSimulator:
 
         # warmup
         for batch in workload_batch:
+            num_prefill_toks = 0
+            num_decode_toks = 0
             for workload in batch:
+                num_prefill_toks += workload.num_input_tokens
+                num_decode_toks += workload.num_output_tokens
                 idx += 1
                 self.profile_engine.add_request(
                     request_id=str(idx),
@@ -106,18 +110,22 @@ class vLLMSimulator:
                     params=SamplingParams(max_tokens=max(workload.num_output_tokens, 1),
                                             ignore_eos=True),
                 )
+            print(f"Warmup {num_prefill_toks=} {num_decode_toks=}")
             while self.profile_engine.has_unfinished_requests():
                 self.profile_engine.step()
 
         # real run
 
-        profile = SimulationProfile()
-        self.profile_engine.model_executor.simulation_profile = profile
+        self.profile_engine.model_executor.simulation_profile.clear()
 
 
         for batch in workload_batch:
-            for _ in range(n_trials):
+            for trial_idx in range(n_trials):
+                num_prefill_toks = 0
+                num_decode_toks = 0
                 for workload in batch:
+                    num_prefill_toks += workload.num_input_tokens
+                    num_decode_toks += workload.num_output_tokens
                     idx += 1
                     self.profile_engine.add_request(
                         request_id=str(idx),
@@ -125,8 +133,11 @@ class vLLMSimulator:
                         params=SamplingParams(max_tokens=max(workload.num_output_tokens, 1),
                                             ignore_eos=True),
                     )
+                print(f"Trial {trial_idx+1}/{n_trials} {num_prefill_toks=} {num_decode_toks=}")
                 while self.profile_engine.has_unfinished_requests():
                     self.profile_engine.step()
+        
+        print("Finished profiling")
         
         return profile
     

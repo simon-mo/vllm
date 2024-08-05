@@ -17,8 +17,11 @@ from vllm.entrypoints.simulator import vLLMSimulator, WorkloadRequest
 # For decode workload, sample the input tokens to 64.
 
 import numpy as np
-prefill_sizes = np.logspace(np.log2(2), np.log2(8192), num=64, base=2).round().astype(int)
-decode_sizes = np.logspace(np.log2(2), np.log2(512), num=64, base=2).round().astype(int)
+
+prefill_sizes = np.logspace(np.log2(2), np.log2(8192), num=64,
+                            base=2).round().astype(int)
+decode_sizes = np.logspace(np.log2(2), np.log2(512), num=64,
+                           base=2).round().astype(int)
 
 workload_batch = []
 # first measure prefill
@@ -39,8 +42,10 @@ print(decode_sizes)
 # ]
 
 # engine = vLLMSimulator(model="facebook/opt-125m")
-engine = vLLMSimulator(model="meta-llama/Meta-Llama-3-8B-Instruct")
-profile = engine.profile_tokens_curve(workload_batch, n_trials=5)
+# engine = vLLMSimulator(model="meta-llama/Meta-Llama-3-8B-Instruct")
+engine = vLLMSimulator(model="meta-llama/Meta-Llama-3-70B-Instruct",
+                       tensor_parallel_size=4)
+profile = engine.profile_tokens_curve(workload_batch, n_trials=3)
 
 # print(profile.prefill_timing) # this is a defaultdict(list)
 # print(profile.decode_timing) # this is a defaultdict(list)
@@ -58,10 +63,10 @@ for k, v in profile.decode_timing.items():
     for i in v:
         data.append({"size": k, "time_ms": i, "op": "decode"})
 
-
 df = pd.DataFrame(data)
 
 import sys
+
 print("----")
 df.to_csv(sys.stdout, index=False)
-df.to_csv("profile.csv", index=False)   
+df.to_csv("profile-70b.csv", index=False)

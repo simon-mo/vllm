@@ -1,5 +1,30 @@
 import json
 from collections import defaultdict
+from contextlib import contextmanager
+import time
+
+
+@contextmanager
+def profile_hook(execute_model_req, profile):
+    prefill_tokens = sum(
+        seq_group.token_chunk_size
+        for seq_group in execute_model_req.seq_group_metadata_list
+        if seq_group.is_prompt)
+    decode_tokens = sum(
+        seq_group.token_chunk_size
+        for seq_group in execute_model_req.seq_group_metadata_list
+        if not seq_group.is_prompt)
+
+    start = time.perf_counter_ns()
+
+    yield
+
+    duration = (time.perf_counter_ns() - start) / 1e6
+
+    print(
+        f"prefill_tokens: {prefill_tokens}, decode_tokens: {decode_tokens}, duration_ms: {duration}"
+    )
+    profile.record(prefill_tokens, decode_tokens, duration)
 
 
 class SimulationProfile:
@@ -8,6 +33,10 @@ class SimulationProfile:
     def __init__(self):
         self.prefill_timing = defaultdict(list)
         self.decode_timing = defaultdict(list)
+
+    def clear(self):
+        self.prefill_timing.clear()
+        self.decode_timing.clear()
 
     def record(self, prefill_tokens, decode_tokens, duration_ms):
         # TODO: use histogram, and sampling
