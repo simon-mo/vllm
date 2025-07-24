@@ -106,6 +106,9 @@ class BenchmarkMetrics:
     median_e2el_ms: float
     std_e2el_ms: float
     percentiles_e2el_ms: list[tuple[float, float]]
+    # Max output tokens per second and concurrent requests at that peak
+    max_output_tokens_per_s: float
+    concurrent_requests_at_max_output: int
 
 
 def calculate_metrics(
@@ -188,6 +191,67 @@ def calculate_metrics(
             "on the benchmark arguments.",
             stacklevel=2,
         )
+
+    # Calculate max output tokens per second metric
+    max_output_tokens_per_s = 0.0
+    concurrent_requests_at_max_output = 0
+
+    if completed > 0:
+        # Find the time range across all successful requests
+        successful_outputs = [output for output in outputs if output.success]
+        if successful_outputs:
+            min_start_time = min(output.start_time for output in successful_outputs)
+            max_end_time = max(
+                output.start_time + output.latency for output in successful_outputs
+            )
+
+            # Create second buckets (ceiling to ensure we capture all time)
+            duration_seconds = int(np.ceil(max_end_time - min_start_time)) + 1
+            tokens_per_second = np.zeros(duration_seconds)
+            concurrent_requests_per_second = np.zeros(duration_seconds)
+
+            for i, output in enumerate(outputs):
+                if not output.success:
+                    continue
+
+                # Calculate token generation times using start_time, ttft, and itl
+                token_times = []
+
+                # First token at start_time + ttft (if ttft > 0)
+                if output.ttft > 0:
+                    token_times.append(output.start_time + output.ttft)
+
+                # Subsequent tokens based on inter-token latencies
+                if output.itl:
+                    current_time = output.start_time + output.ttft
+                    for itl_value in output.itl:
+                        current_time += itl_value
+                        token_times.append(current_time)
+
+                # Add tokens to second buckets
+                for token_time in token_times:
+                    second_bucket = int(token_time - min_start_time)
+                    if 0 <= second_bucket < duration_seconds:
+                        tokens_per_second[second_bucket] += 1
+
+                # Track concurrent requests for each second this request was active
+                request_start_second = max(0, int(output.start_time - min_start_time))
+                request_end_second = min(
+                    duration_seconds - 1,
+                    int((output.start_time + output.latency) - min_start_time),
+                )
+
+                for second in range(request_start_second, request_end_second + 1):
+                    concurrent_requests_per_second[second] += 1
+
+            # Find the maximum tokens per second and corresponding concurrent requests
+            if len(tokens_per_second) > 0:
+                max_output_tokens_per_s = float(np.max(tokens_per_second))
+                max_tokens_second_idx = int(np.argmax(tokens_per_second))
+                concurrent_requests_at_max_output = int(
+                    concurrent_requests_per_second[max_tokens_second_idx]
+                )
+
     metrics = BenchmarkMetrics(
         completed=completed,
         total_input=total_input,
@@ -221,6 +285,8 @@ def calculate_metrics(
         percentiles_e2el_ms=[
             (p, np.percentile(e2els or 0, p) * 1000) for p in selected_percentiles
         ],
+        max_output_tokens_per_s=max_output_tokens_per_s,
+        concurrent_requests_at_max_output=concurrent_requests_at_max_output,
     )
 
     return metrics, actual_output_lens
@@ -448,6 +514,17 @@ async def benchmark(
     print(
         "{:<40} {:<10.2f}".format(
             "Total Token throughput (tok/s):", metrics.total_token_throughput
+        )
+    )
+    print(
+        "{:<40} {:<10.2f}".format(
+            "Max output tokens per second:", metrics.max_output_tokens_per_s
+        )
+    )
+    print(
+        "{:<40} {:<10.2f}".format(
+            "Max concurrent requests at max throughput:",
+            metrics.concurrent_requests_at_max_output,
         )
     )
 

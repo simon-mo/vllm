@@ -13,8 +13,9 @@ fi
 
 ARCH=$(uname -m)
 
-ROOT_DIR="/usr/local"
+ROOT_DIR="$(pwd)/nixl_workspace"
 mkdir -p "$ROOT_DIR"
+
 GDR_HOME="$ROOT_DIR/gdrcopy"
 UCX_HOME="$ROOT_DIR/ucx"
 NIXL_HOME="$ROOT_DIR/nixl"
@@ -27,27 +28,27 @@ TEMP_DIR="nixl_installer"
 mkdir -p "$TEMP_DIR"
 cd "$TEMP_DIR"
 
-pip install meson ninja pybind11
+# pip install meson ninja pybind11
 
-if [ ! -e "/dev/gdrdrv" ] || [ "$FORCE" = true ]; then
-    echo "Installing gdrcopy\n"
-    wget https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz
-    tar xzf v2.5.tar.gz; rm v2.5.tar.gz
-    cd gdrcopy-2.5
-    make prefix=$GDR_HOME CUDA=$CUDA_HOME all install
+# if [ ! -e "/dev/gdrdrv" ] || [ "$FORCE" = true ]; then
+#     echo "Installing gdrcopy\n"
+#     wget https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz
+#     tar xzf v2.5.tar.gz; rm v2.5.tar.gz
+#     cd gdrcopy-2.5
+#     make prefix=$GDR_HOME CUDA=$CUDA_HOME all install
     
-    if $SUDO; then
-        echo "Running insmod.sh with sudo"
-        sudo ./insmod.sh
-    else
-        echo "Skipping insmod.sh - sudo not available"
-        echo "Please run 'sudo ./gdrcopy-2.5/insmod.sh' manually if needed"
-    fi
+#     if $SUDO; then
+#         echo "Running insmod.sh with sudo"
+#         sudo ./insmod.sh
+#     else
+#         echo "Skipping insmod.sh - sudo not available"
+#         echo "Please run 'sudo ./gdrcopy-2.5/insmod.sh' manually if needed"
+#     fi
     
-    cd ..
-else
-    echo "Found /dev/gdrdrv. Skipping gdrcopy installation"
-fi
+#     cd ..
+# else
+#     echo "Found /dev/gdrdrv. Skipping gdrcopy installation"
+# fi
 
 if ! command -v ucx_info &> /dev/null || [ "$FORCE" = true ]; then
     echo "Installing UCX"
@@ -78,7 +79,12 @@ if ! command -v ucx_info &> /dev/null || [ "$FORCE" = true ]; then
                 --enable-mt                        \
                 $MLX_OPTS
     make -j
-    make -j install-strip
+    make -j install
+
+    if [ -z "$UCX_HOME" ] || [ ! -d "$UCX_HOME" ] || [ -z "$(ls -A "$UCX_HOME" 2>/dev/null)" ]; then
+        echo "Error: UCX_HOME directory ($UCX_HOME) is not set, does not exist, or is empty. Please check your environment variables, permissions, and installation."
+        exit 1
+    fi
     
     if $SUDO; then
         echo "Running ldconfig with sudo"
