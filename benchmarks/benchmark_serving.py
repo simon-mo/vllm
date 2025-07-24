@@ -227,7 +227,6 @@ def calculate_metrics(
                     for itl_value in output.itl:
                         current_time += itl_value
                         token_times.append(current_time)
-
                 # Add tokens to second buckets
                 for token_time in token_times:
                     second_bucket = int(token_time - min_start_time)
