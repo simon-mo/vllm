@@ -170,6 +170,20 @@ class Worker(WorkerBase):
         # pending non-blocking PP send work from the previous iteration
         self._pp_send_work: list[Handle] = []
 
+        # Resolved lazily on first sleep/wake; persists worker-process state.
+        self._sleep_mode_backend = None
+
+    def _get_sleep_mode_backend(self):
+        if self._sleep_mode_backend is None:
+            from vllm.device_allocator.sleep_mode_backend import (
+                SleepModeBackendFactory,
+            )
+
+            self._sleep_mode_backend = SleepModeBackendFactory.create_backend(
+                self.vllm_config.model_config
+            )
+        return self._sleep_mode_backend
+
     def sleep(self, level: int = 1) -> None:
         torch.accelerator.synchronize()
         free_bytes_before_sleep = current_platform.mem_get_info()[0]
@@ -181,8 +195,7 @@ class Worker(WorkerBase):
                 name: buffer.cpu().clone() for name, buffer in model.named_buffers()
             }
 
-        allocator = get_mem_allocator_instance()
-        allocator.sleep(offload_tags=("weights",) if level == 1 else tuple())
+        self._get_sleep_mode_backend().suspend(level)
 
         torch.accelerator.synchronize()
         deadline = time.monotonic() + (5.0 if current_platform.is_rocm() else 0)
@@ -202,8 +215,7 @@ class Worker(WorkerBase):
         )
 
     def wake_up(self, tags: list[str] | None = None) -> None:
-        allocator = get_mem_allocator_instance()
-        allocator.wake_up(tags)
+        self._get_sleep_mode_backend().resume(tags)
 
         # Restore the buffers after level 2 sleep
         if len(self._sleep_saved_buffers):
