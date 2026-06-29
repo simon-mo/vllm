@@ -1275,7 +1275,6 @@ class TestThinkingBudgetReentry:
     @staticmethod
     def _make_holder(end_token_ids):
         from dataclasses import dataclass
-        from unittest.mock import MagicMock
 
         @dataclass
         class FakeReasoningConfig:
