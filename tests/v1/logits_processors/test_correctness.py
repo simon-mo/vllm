@@ -1264,7 +1264,6 @@ def test_thinking_budget_long_thinking_section_end_marker_found_at_correct_index
 # the state machine must detect and enforce budget on subsequent blocks.
 
 class TestThinkingBudgetReentry:
-
     THINK_START = 100
     THINK_END_SINGLE = [200]
     THINK_END_MULTI = [200, 201, 202]
@@ -1273,19 +1272,13 @@ class TestThinkingBudgetReentry:
     THINK_TOKEN = 60
 
     @staticmethod
-    def _make_holder(end_token_ids):
-        from dataclasses import dataclass
-
-        @dataclass
+    def _make_holder(end_token_ids: list[int]) -> ThinkingBudgetStateHolder:
         class FakeReasoningConfig:
-            reasoning_start_token_ids: list[int]
-            reasoning_end_token_ids: list[int]
-            enabled: bool = True
+            reasoning_start_token_ids = [TestThinkingBudgetReentry.THINK_START]
+            enabled = True
 
-        cfg = FakeReasoningConfig(
-            reasoning_start_token_ids=[TestThinkingBudgetReentry.THINK_START],
-            reasoning_end_token_ids=end_token_ids,
-        )
+        cfg = FakeReasoningConfig()
+        cfg.reasoning_end_token_ids = end_token_ids
         return ThinkingBudgetStateHolder(
             reasoning_config=cfg,
             max_num_seqs=8,
@@ -1295,41 +1288,50 @@ class TestThinkingBudgetReentry:
         )
 
     @staticmethod
-    def _sync_batch(holder, budget):
-        from unittest.mock import MagicMock
-
-        params = MagicMock()
-        params.thinking_token_budget = budget
-        batch_update = MagicMock(
-            removed=[],
-            added=[(0, params, None, [])],
-            moved=[],
+    def _sync_batch(holder: ThinkingBudgetStateHolder, budget: int) -> None:
+        holder.sync_batch(
+            BatchUpdate(
+                batch_size=1,
+                removed=(),
+                added=[(0, SamplingParams(thinking_token_budget=budget), None, [])],
+                moved=(),
+            )
         )
-        holder.sync_batch(batch_update)
 
     @staticmethod
-    def _step(holder, output_tok_ids):
+    def _step(holder: ThinkingBudgetStateHolder, output_tok_ids: list[int]) -> None:
         holder.update_state(
             output_token_ids=[output_tok_ids],
             spec_token_ids=None,
             repeat_indices=None,
         )
 
-    def test_single_token_end_reentry(self):
-        holder = self._make_holder(self.THINK_END_SINGLE)
-        self._sync_batch(holder, self.BUDGET)
-
-        output = []
-        output.append(self.THINK_START)
+    def _exhaust_budget(self, holder: ThinkingBudgetStateHolder) -> list[int]:
+        output = [self.THINK_START]
         self._step(holder, list(output))
         for _ in range(self.BUDGET):
             output.append(self.THINK_TOKEN)
             self._step(holder, list(output))
 
         assert holder._state[0]["in_end"]
+        return output
 
-        output.append(self.THINK_END_SINGLE[0])
-        self._step(holder, list(output))
+    def _accept_end_tokens(
+        self,
+        holder: ThinkingBudgetStateHolder,
+        output: list[int],
+        end_token_ids: list[int],
+    ) -> None:
+        for tok in end_token_ids:
+            output.append(tok)
+            self._step(holder, list(output))
+
+    def test_single_token_end_reentry(self):
+        holder = self._make_holder(self.THINK_END_SINGLE)
+        self._sync_batch(holder, self.BUDGET)
+
+        output = self._exhaust_budget(holder)
+        self._accept_end_tokens(holder, output, self.THINK_END_SINGLE)
 
         for _ in range(3):
             output.append(self.CONTENT_TOKEN)
@@ -1349,18 +1351,8 @@ class TestThinkingBudgetReentry:
         holder = self._make_holder(self.THINK_END_MULTI)
         self._sync_batch(holder, self.BUDGET)
 
-        output = []
-        output.append(self.THINK_START)
-        self._step(holder, list(output))
-        for _ in range(self.BUDGET):
-            output.append(self.THINK_TOKEN)
-            self._step(holder, list(output))
-
-        assert holder._state[0]["in_end"]
-
-        for tok in self.THINK_END_MULTI:
-            output.append(tok)
-            self._step(holder, list(output))
+        output = self._exhaust_budget(holder)
+        self._accept_end_tokens(holder, output, self.THINK_END_MULTI)
 
         assert not holder._state[0]["in_end"]
 
@@ -1378,17 +1370,8 @@ class TestThinkingBudgetReentry:
         holder = self._make_holder(self.THINK_END_SINGLE)
         self._sync_batch(holder, self.BUDGET)
 
-        output = []
-        output.append(self.THINK_START)
-        self._step(holder, list(output))
-        for _ in range(self.BUDGET):
-            output.append(self.THINK_TOKEN)
-            self._step(holder, list(output))
-
-        assert holder._state[0]["in_end"]
-
-        output.append(self.THINK_END_SINGLE[0])
-        self._step(holder, list(output))
+        output = self._exhaust_budget(holder)
+        self._accept_end_tokens(holder, output, self.THINK_END_SINGLE)
 
         for _ in range(20):
             output.append(self.CONTENT_TOKEN)
