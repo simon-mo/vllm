@@ -265,19 +265,18 @@ class ThinkingBudgetStateHolder:
                 self.think_start_token_ids,
                 max(scan_offset, state["start_search_pos"] - (seq_len - 1)),
             )
-            if start_thinking >= 0:
-                if scan_offset > 0:
-                    # Re-entry after a forced end: budget was already exhausted
-                    # in a prior block, so immediately force-close this one.
-                    # scan_offset > 0 is only set after forced-end completion
-                    # (never after natural end), so this won't block legitimate
-                    # re-entries where budget remains.
-                    state["start_thinking"] = start_thinking
-                    state["in_think"] = False
-                    state["in_end"] = True
-                    state["end_count"] = 0
-                    state["force_index"] = [0]
-                    return
+            if start_thinking >= 0 and scan_offset > 0:
+                # Re-entry after a forced end: budget was already exhausted
+                # in a prior block, so immediately force-close this one.
+                # scan_offset > 0 is only set after forced-end completion
+                # (never after natural end), so this won't block legitimate
+                # re-entries where budget remains.
+                state["start_thinking"] = start_thinking
+                state["in_think"] = False
+                state["in_end"] = True
+                state["end_count"] = 0
+                state["force_index"] = [0]
+                return
             state["start_thinking"] = start_thinking
             if start_thinking == -1:
                 state["start_search_pos"] = len(output_tok_ids)
