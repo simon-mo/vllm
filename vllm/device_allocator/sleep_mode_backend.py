@@ -4,11 +4,9 @@
 
 vLLM's sleep/wake-up today is hard-wired to ``CuMemAllocator``: the GPU worker
 calls ``allocator.sleep(...)`` / ``allocator.wake_up(...)`` directly. RFC #34303
-proposes additional mechanisms for freeing and restoring GPU state - CUDA
-process checkpoint, CRIU, durable snapshot/restore - that share the *dispatch*
-(``/sleep`` endpoint -> engine -> executor -> worker) but differ in *mechanism*
-and in which resources they preserve (NCCL communicators, compiled kernels,
-CUDA graphs, survival across process restart).
+proposes additional mechanisms for freeing and restoring GPU state that share
+the *dispatch* (``/sleep`` endpoint -> engine -> executor -> worker) but differ
+in *mechanism*.
 
 This module introduces a thin backend abstraction so those mechanisms can be
 selected by name without changing the public API. The default ``cumem`` backend
@@ -41,9 +39,8 @@ class SleepModeBackend(ABC):
     (``/sleep`` endpoint -> engine -> executor -> worker) is shared across all
     backends and lives outside this class.
 
-    Capability flags are ``@classmethod`` so callers (executor, ``/health``,
-    AUTO selection) can introspect a backend without instantiating it, matching
-    the capability-flag convention used by attention backends.
+    Backend classes expose support checks without requiring instantiation so
+    callers can validate platform availability before creating a backend.
     """
 
     def __init__(self) -> None:
@@ -73,36 +70,10 @@ class SleepModeBackend(ABC):
         (suspended) engine from a healthy-serving one (see RFC #34303)."""
         return self._state
 
-    # -- Capability introspection (no instance required) --
-
     @classmethod
     def is_supported(cls) -> bool:
         """Whether this backend can run on the current platform/driver."""
         return True
-
-    @classmethod
-    def preserves_nccl(cls) -> bool:
-        """If False, NCCL communicators are destroyed by ``suspend`` and the
-        executor must re-initialize them on ``resume``."""
-        return False
-
-    @classmethod
-    def preserves_compiled_artifacts(cls) -> bool:
-        """If True, torch.compile / JIT kernels survive suspend/resume and need
-        not be recompiled on resume."""
-        return False
-
-    @classmethod
-    def preserves_graphs_with_nccl(cls) -> bool:
-        """If True, CUDA graphs containing NCCL collectives stay valid after
-        resume. False when NCCL is rebuilt (embedded comm handles go stale)."""
-        return False
-
-    @classmethod
-    def supports_durable_storage(cls) -> bool:
-        """If True, suspended state can be persisted beyond the process
-        lifetime (disk or object storage) and restored in a new process."""
-        return False
 
 
 class CuMemBackend(SleepModeBackend):
@@ -112,8 +83,7 @@ class CuMemBackend(SleepModeBackend):
     before this abstraction existed, so behavior is identical to vLLM's current
     sleep/wake-up. ``get_mem_allocator_instance()`` resolves to
     ``CuMemAllocator`` on CUDA and ``XpuMemAllocator`` on XPU; suspend offloads
-    per-allocation between GPU and host, with NCCL buffers left untouched (they
-    are allocated outside the allocator pool).
+    per-allocation between GPU and host.
     """
 
     def suspend(self, level: int = 1) -> None:
@@ -130,13 +100,6 @@ class CuMemBackend(SleepModeBackend):
         allocator = get_mem_allocator_instance()
         allocator.wake_up(tags)
         self._state = "RUNNING"
-
-    @classmethod
-    def preserves_nccl(cls) -> bool:
-        # NCCL buffers live outside CuMemAllocator's pool, so an allocator-level
-        # sleep leaves the communicators intact (no reinit needed on resume).
-        return True
-
 
 class SleepModeBackendFactory:
     """Registry and resolver for sleep-mode backends.
