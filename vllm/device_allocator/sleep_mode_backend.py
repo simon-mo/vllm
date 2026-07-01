@@ -135,7 +135,7 @@ class SleepModeBackendFactory:
         return cls._registry[name]()
 
     @classmethod
-    def create_backend(cls, model_config: "ModelConfig") -> SleepModeBackend:
+    def create_backend(cls, model_config: ModelConfig) -> SleepModeBackend:
         """Instantiate the backend selected by ``model_config``."""
         name = model_config.sleep_mode_backend
         backend_cls = cls.get_backend_class(name)
