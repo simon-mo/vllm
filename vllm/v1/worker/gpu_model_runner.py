@@ -860,6 +860,7 @@ class GPUModelRunner(
         self._draft_token_ids: list[list[int]] | torch.Tensor | None = None
         self._draft_probs: torch.Tensor | None = None
         self._draft_prob_req_ids: list[str] | None = None
+        self._empty_draft_token_req_ids: list[str] | None = None
         # N-gram GPU path: async D2H buffer/event for per-request valid draft counts.
         self._num_valid_draft_tokens: torch.Tensor | None = None
         self._num_valid_draft_tokens_cpu: torch.Tensor | None = None
@@ -4510,6 +4511,7 @@ class GPUModelRunner(
         self._draft_probs = None
         self._draft_prob_req_ids = None
         self._draft_token_req_ids = None
+        self._empty_draft_token_req_ids = None
         self.valid_sampled_token_count_gpu = None
         self.input_batch.prev_sampled_token_ids = None
 
@@ -4551,14 +4553,13 @@ class GPUModelRunner(
                     "DFlash speculative decoding is disabled for structured-output "
                     "requests because DFlash drafts are not grammar-constrained."
                 )
-                self._draft_token_ids = torch.empty(
-                    (len(self.input_batch.req_ids), 0),
-                    device=self.device,
-                    dtype=torch.int64,
-                )
+                self._draft_token_ids = torch.zeros(
+                    1, device=self.device, dtype=torch.int32
+                ).expand(len(self.input_batch.req_ids), self.num_spec_tokens)
+                self._draft_token_req_ids = self.input_batch.req_ids.copy()
+                self._empty_draft_token_req_ids = self.input_batch.req_ids.copy()
                 self._draft_probs = None
                 self._draft_prob_req_ids = None
-                self._copy_draft_token_ids_to_cpu(scheduler_output)
             elif use_gpu_toks:
                 # EAGLE/DraftModel speculative decoding can use the GPU sampled tokens
                 # as inputs, and does not need to wait for bookkeeping to finish.
@@ -4826,6 +4827,9 @@ class GPUModelRunner(
             self.draft_token_ids_event.record()
 
     def _get_draft_token_ids_cpu(self) -> tuple[list[list[int]], list[str]]:
+        if self._empty_draft_token_req_ids is not None:
+            req_ids = self._empty_draft_token_req_ids
+            return [[] for _ in req_ids], req_ids
         if isinstance(self._draft_token_ids, list):
             return self._draft_token_ids, self.input_batch.req_ids
         req_ids = self._draft_token_req_ids
