@@ -426,6 +426,94 @@ class StructuredOutputManager:
         return False
 
     @staticmethod
+    def _find_reasoning_end_in_tokens(
+        reasoner: "ReasoningParser",
+        token_ids: list[int],
+        prior_token_ids: list[int],
+    ) -> int | None:
+        """Return the index where the reasoning-end marker completes.
+
+        ``prior_token_ids`` are tokens already committed to the request. The
+        scanner appends the newly generated tokens one by one so multi-token
+        markers that straddle the prior/current boundary are still detected.
+        """
+        buf = list(prior_token_ids)
+        for i, token in enumerate(token_ids):
+            buf.append(token)
+            if reasoner.is_reasoning_end_streaming(buf, [token]):
+                return i
+        return None
+
+    def precommit_filter_tokens(
+        self,
+        request: "Request",
+        new_token_ids: list[int],
+    ) -> tuple[list[int], int]:
+        """Filter invalid post-reasoning speculative tokens before commit.
+
+        On the step where reasoning ends, speculative decoding may have sampled
+        post-boundary bonus tokens before the structured-output grammar mask was
+        enabled. Validate the post-boundary suffix with the grammar, keep only
+        its valid prefix, and report how many trailing tokens were rejected so
+        scheduler accounting can be rewound consistently.
+        """
+        if not request.use_structured_output or self.enable_in_reasoning:
+            return new_token_ids, 0
+
+        reasoner = self._get_reasoner(request)
+        if reasoner is None:
+            return new_token_ids, 0
+
+        structured_req = request.structured_output_request
+        if structured_req is None or structured_req.grammar is None:
+            return new_token_ids, 0
+
+        # Only the boundary step can contain unconstrained post-boundary bonus
+        # tokens. After that, the normal bitmask + accept_tokens path applies.
+        if structured_req.reasoning_ended:
+            return new_token_ids, 0
+
+        split_idx = self._find_reasoning_end_in_tokens(
+            reasoner,
+            new_token_ids,
+            list(request.all_token_ids or []),
+        )
+        if split_idx is None:
+            return new_token_ids, 0
+
+        pre_boundary = new_token_ids[: split_idx + 1]
+        post_boundary = new_token_ids[split_idx + 1 :]
+        if not post_boundary:
+            return new_token_ids, 0
+
+        grammar = structured_req.grammar
+        validated = grammar.validate_tokens(post_boundary)
+        num_rejected = len(post_boundary) - len(validated)
+
+        # Structural-tag grammars are advanced in should_advance on the boundary
+        # step. Avoid double-advancing that matcher here; still return the
+        # truncated tokens so invalid post-boundary drafts do not leak.
+        is_structural_tag_spec = (
+            self.vllm_config.speculative_config is not None
+            and structured_req.structured_output_key[0]
+            == StructuredOutputOptions.STRUCTURAL_TAG
+        )
+        if validated and not is_structural_tag_spec:
+            ok = grammar.accept_tokens(request.request_id, validated)
+            if not ok:
+                logger.warning(
+                    "precommit_filter_tokens: validate/accept mismatch for "
+                    "request %s; treating post-boundary slice as rejected.",
+                    request.request_id,
+                )
+                validated = []
+                num_rejected = len(post_boundary)
+
+        if num_rejected > 0:
+            return pre_boundary + list(validated), num_rejected
+        return new_token_ids, 0
+
+    @staticmethod
     def _find_reasoning_end_index(
         reasoner: "ReasoningParser", all_token_ids: Sequence[int], start: int
     ) -> int:

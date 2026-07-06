@@ -1627,6 +1627,18 @@ class Scheduler(SchedulerInterface):
             status_before_stop = request.status
             num_output_tokens_before = len(request._output_token_ids)
 
+            if new_token_ids:
+                new_token_ids, num_grammar_rejected = (
+                    self.structured_output_manager.precommit_filter_tokens(
+                        request, new_token_ids
+                    )
+                )
+                if num_grammar_rejected > 0:
+                    if request.num_computed_tokens > 0:
+                        request.num_computed_tokens -= num_grammar_rejected
+                    if request.num_output_placeholders > 0:
+                        request.num_output_placeholders -= num_grammar_rejected
+
             # Check for stop and update request status.
             if new_token_ids:
                 new_token_ids, stopped = self._update_request_with_output(
