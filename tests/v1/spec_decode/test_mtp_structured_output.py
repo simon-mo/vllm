@@ -10,26 +10,10 @@ from vllm.config.model import ModelConfig
 from vllm.config.speculative import SpeculativeConfig
 from vllm.sampling_params import SamplingParams, StructuredOutputsParams
 from vllm.v1.request import Request
-from vllm.v1.spec_decode.utils import should_skip_dflash_for_structured_output
 from vllm.v1.structured_output import StructuredOutputManager
 
 TOKENIZER = "gpt2"
 NUM_SPEC_TOKENS = 4
-
-
-class _SpecConfig:
-    def __init__(self, use_dflash: bool):
-        self._use_dflash = use_dflash
-
-    def use_dflash(self) -> bool:
-        return self._use_dflash
-
-
-def test_dflash_skipped_for_structured_output_requests():
-    assert should_skip_dflash_for_structured_output(_SpecConfig(True), True)
-    assert not should_skip_dflash_for_structured_output(_SpecConfig(True), False)
-    assert not should_skip_dflash_for_structured_output(_SpecConfig(False), True)
-    assert not should_skip_dflash_for_structured_output(None, True)
 
 
 def _make_manager_and_request(backend: str, prompt_str: str = '{"a": "b"}'):

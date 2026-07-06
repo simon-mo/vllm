@@ -196,10 +196,7 @@ from vllm.v1.spec_decode.ngram_proposer_gpu import (
 )
 from vllm.v1.spec_decode.step3p5 import Step3p5MTPProposer
 from vllm.v1.spec_decode.suffix_decoding import SuffixDecodingProposer
-from vllm.v1.spec_decode.utils import (
-    should_skip_dflash_for_structured_output,
-    update_num_computed_tokens_for_batch_change,
-)
+from vllm.v1.spec_decode.utils import update_num_computed_tokens_for_batch_change
 from vllm.v1.structured_output.utils import apply_grammar_bitmask
 from vllm.v1.utils import CpuGpuBuffer, record_function_or_nullcontext
 from vllm.v1.worker import mamba_utils
@@ -860,7 +857,6 @@ class GPUModelRunner(
         self._draft_token_ids: list[list[int]] | torch.Tensor | None = None
         self._draft_probs: torch.Tensor | None = None
         self._draft_prob_req_ids: list[str] | None = None
-        self._empty_draft_token_req_ids: list[str] | None = None
         # N-gram GPU path: async D2H buffer/event for per-request valid draft counts.
         self._num_valid_draft_tokens: torch.Tensor | None = None
         self._num_valid_draft_tokens_cpu: torch.Tensor | None = None
@@ -4511,7 +4507,6 @@ class GPUModelRunner(
         self._draft_probs = None
         self._draft_prob_req_ids = None
         self._draft_token_req_ids = None
-        self._empty_draft_token_req_ids = None
         self.valid_sampled_token_count_gpu = None
         self.input_batch.prev_sampled_token_ids = None
 
@@ -4534,11 +4529,6 @@ class GPUModelRunner(
         spec_config = self.speculative_config
         propose_drafts_after_bookkeeping = False
         if spec_config is not None:
-            skip_dflash_for_structured_output = (
-                should_skip_dflash_for_structured_output(
-                    spec_config, scheduler_output.has_structured_output_requests
-                )
-            )
             # Decide whether to run the drafter or zero out draft tokens.
             input_fits_in_drafter = self._input_fits_in_drafter(
                 spec_decode_common_attn_metadata
@@ -4548,23 +4538,7 @@ class GPUModelRunner(
                 or spec_config.uses_draft_model()
                 or spec_config.uses_extract_hidden_states()
             ) and not spec_config.disable_padded_drafter_batch
-            if skip_dflash_for_structured_output:
-                logger.warning_once(
-                    "DFlash speculative decoding is disabled for structured-output "
-                    "requests because DFlash drafts are not grammar-constrained."
-                )
-                self._draft_token_ids = torch.zeros(
-                    1, device=self.device, dtype=torch.int32
-                ).expand(len(self.input_batch.req_ids), self.num_spec_tokens)
-                self._draft_token_req_ids = self.input_batch.req_ids.copy()
-                self._empty_draft_token_req_ids = self.input_batch.req_ids.copy()
-                self._draft_probs = None
-                self._draft_prob_req_ids = None
-                if self.use_async_scheduling:
-                    self.input_batch.prev_sampled_token_ids = (
-                        sampler_output.sampled_token_ids[:, :1].contiguous()
-                    )
-            elif use_gpu_toks:
+            if use_gpu_toks:
                 # EAGLE/DraftModel speculative decoding can use the GPU sampled tokens
                 # as inputs, and does not need to wait for bookkeeping to finish.
                 assert isinstance(
@@ -4616,7 +4590,7 @@ class GPUModelRunner(
             else:
                 propose_drafts_after_bookkeeping = input_fits_in_drafter
 
-            if not input_fits_in_drafter and not skip_dflash_for_structured_output:
+            if not input_fits_in_drafter:
                 # Zero out draft tokens so the scheduler doesn't schedule
                 # stale drafts from the previous step.
                 # For Nemotron-H: it is necessary to zero out the draft tokens,
@@ -4831,9 +4805,6 @@ class GPUModelRunner(
             self.draft_token_ids_event.record()
 
     def _get_draft_token_ids_cpu(self) -> tuple[list[list[int]], list[str]]:
-        if self._empty_draft_token_req_ids is not None:
-            req_ids = self._empty_draft_token_req_ids
-            return [[] for _ in req_ids], req_ids
         if isinstance(self._draft_token_ids, list):
             return self._draft_token_ids, self.input_batch.req_ids
         req_ids = self._draft_token_req_ids

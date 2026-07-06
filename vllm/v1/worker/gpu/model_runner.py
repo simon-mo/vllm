@@ -51,7 +51,6 @@ from vllm.utils.torch_utils import PIN_MEMORY, STR_DTYPE_TO_TORCH_DTYPE
 from vllm.v1.core.sched.output import GrammarOutput, SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig, MambaSpec
 from vllm.v1.outputs import DraftTokenIds, ModelRunnerOutput
-from vllm.v1.spec_decode.utils import should_skip_dflash_for_structured_output
 from vllm.v1.worker.cp_utils import check_attention_cp_compatibility
 from vllm.v1.worker.gpu.async_utils import AsyncOutput, AsyncPoolingOutput
 from vllm.v1.worker.gpu.attn_utils import (
@@ -1454,11 +1453,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             input_batch.query_start_loc,
         )
 
-        skip_dflash_for_structured_output = should_skip_dflash_for_structured_output(
-            self.speculative_config,
-            input_batch.has_structured_output_reqs,
-        )
-        if self.speculator is not None and not skip_dflash_for_structured_output:
+        if self.speculator is not None:
             assert self.sampler is not None
             # Let the target override the hidden state fed to the drafter
             # (e.g. DeepSeek V4 MTP needs the pre-hc_head residual). The
@@ -1483,16 +1478,8 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 mm_inputs=mm_inputs,
             )
             self.req_states.draft_tokens[input_batch.idx_mapping] = draft_tokens
-        elif skip_dflash_for_structured_output:
-            logger.warning_once(
-                "DFlash speculative decoding is disabled for structured-output "
-                "requests because DFlash drafts are not grammar-constrained."
-            )
-            self.req_states.draft_tokens[input_batch.idx_mapping] = 0
 
-        if skip_dflash_for_structured_output:
-            self.draft_tokens_handler.set_empty_draft_tokens(input_batch.req_ids)
-        elif self.num_speculative_steps > 0:
+        if self.num_speculative_steps > 0:
             # Spec-decode and diffusion LLMs both use draft tokens but the latter does
             # not have a speculator (i.e. self.speculator is None)
             self.draft_tokens_handler.set_draft_tokens(
