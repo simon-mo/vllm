@@ -4560,6 +4560,10 @@ class GPUModelRunner(
                 self._empty_draft_token_req_ids = self.input_batch.req_ids.copy()
                 self._draft_probs = None
                 self._draft_prob_req_ids = None
+                if self.use_async_scheduling:
+                    self.input_batch.prev_sampled_token_ids = (
+                        sampler_output.sampled_token_ids[:, :1].contiguous()
+                    )
             elif use_gpu_toks:
                 # EAGLE/DraftModel speculative decoding can use the GPU sampled tokens
                 # as inputs, and does not need to wait for bookkeeping to finish.
