@@ -41,7 +41,14 @@ class DraftTokensHandler:
             draft_tokens.record_stream(self.copy_stream)
             self.copy_event.record()
 
+    def set_empty_draft_tokens(self, req_ids: list[str]) -> None:
+        self.req_ids = req_ids.copy()
+        self.num_draft_tokens = 0
+        self.draft_tokens_np = np.empty((len(req_ids), 0), dtype=np.int64)
+
     def get_draft_tokens(self) -> DraftTokenIds | None:
+        if self.num_draft_tokens == 0:
+            return DraftTokenIds(self.req_ids, [[] for _ in self.req_ids])
         if self.draft_tokens_np is not None:
             self.copy_event.synchronize()
             draft_token_ids = self.draft_tokens_np.tolist()

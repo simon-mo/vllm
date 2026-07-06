@@ -196,7 +196,10 @@ from vllm.v1.spec_decode.ngram_proposer_gpu import (
 )
 from vllm.v1.spec_decode.step3p5 import Step3p5MTPProposer
 from vllm.v1.spec_decode.suffix_decoding import SuffixDecodingProposer
-from vllm.v1.spec_decode.utils import update_num_computed_tokens_for_batch_change
+from vllm.v1.spec_decode.utils import (
+    should_skip_dflash_for_structured_output,
+    update_num_computed_tokens_for_batch_change,
+)
 from vllm.v1.structured_output.utils import apply_grammar_bitmask
 from vllm.v1.utils import CpuGpuBuffer, record_function_or_nullcontext
 from vllm.v1.worker import mamba_utils
@@ -4529,6 +4532,11 @@ class GPUModelRunner(
         spec_config = self.speculative_config
         propose_drafts_after_bookkeeping = False
         if spec_config is not None:
+            skip_dflash_for_structured_output = (
+                should_skip_dflash_for_structured_output(
+                    spec_config, scheduler_output.has_structured_output_requests
+                )
+            )
             # Decide whether to run the drafter or zero out draft tokens.
             input_fits_in_drafter = self._input_fits_in_drafter(
                 spec_decode_common_attn_metadata
@@ -4538,7 +4546,16 @@ class GPUModelRunner(
                 or spec_config.uses_draft_model()
                 or spec_config.uses_extract_hidden_states()
             ) and not spec_config.disable_padded_drafter_batch
-            if use_gpu_toks:
+            if skip_dflash_for_structured_output:
+                logger.warning_once(
+                    "DFlash speculative decoding is disabled for structured-output "
+                    "requests because DFlash drafts are not grammar-constrained."
+                )
+                self._draft_token_ids = [[] for _ in self.input_batch.req_ids]
+                self._draft_token_req_ids = self.input_batch.req_ids.copy()
+                self._draft_probs = None
+                self._draft_prob_req_ids = None
+            elif use_gpu_toks:
                 # EAGLE/DraftModel speculative decoding can use the GPU sampled tokens
                 # as inputs, and does not need to wait for bookkeeping to finish.
                 assert isinstance(
@@ -4590,7 +4607,7 @@ class GPUModelRunner(
             else:
                 propose_drafts_after_bookkeeping = input_fits_in_drafter
 
-            if not input_fits_in_drafter:
+            if not input_fits_in_drafter and not skip_dflash_for_structured_output:
                 # Zero out draft tokens so the scheduler doesn't schedule
                 # stale drafts from the previous step.
                 # For Nemotron-H: it is necessary to zero out the draft tokens,

@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+from typing import Any
+
 import torch
 
 from vllm.platforms import current_platform
@@ -23,6 +25,17 @@ def next_power_of_2(n: int) -> int:
     n |= n >> 16
     n |= n >> 32
     return n + 1
+
+
+def should_skip_dflash_for_structured_output(
+    speculative_config: Any | None,
+    has_structured_output_requests: bool,
+) -> bool:
+    return bool(
+        has_structured_output_requests
+        and speculative_config is not None
+        and speculative_config.use_dflash()
+    )
 
 
 @triton.jit
