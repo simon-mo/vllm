@@ -65,10 +65,15 @@ class TestReasoningStructuredOutput:
         request.structured_output_request.grammar = Mock()
         request.structured_output_request.reasoning_parser_kwargs = None
         request.structured_output_request.reasoner = None
+        request.structured_output_request.structured_output_key = (
+            StructuredOutputOptions.JSON,
+            "{}",
+        )
         request.structured_output_request.grammar.is_terminated = Mock(
             return_value=False
         )
         request.use_structured_output = True
+        request.request_id = "req-0"
         request.prompt_token_ids = [1, 2, 3, 4, 5]
         request.all_token_ids = [1, 2, 3, 4, 5, 6, 7, 8]
         request.num_computed_tokens = 5
@@ -258,3 +263,58 @@ class TestReasoningStructuredOutput:
 
         # Should return True since reasoning has ended
         assert result is True
+
+    def test_precommit_filter_tokens_truncates_invalid_post_boundary_tokens(
+        self,
+        manager_with_reasoner,
+        mock_request_with_structured_output,
+    ):
+        """Invalid tokens after the reasoning boundary are rejected pre-commit."""
+        structured_req = mock_request_with_structured_output.structured_output_request
+        structured_req.reasoning_ended = False
+        reasoner = MockReasoner(tokenizer=Mock())
+        reasoner.is_reasoning_end_streaming.side_effect = (
+            lambda _tokens, delta: delta == [20]
+        )
+        structured_req.reasoner = reasoner
+        structured_req.grammar.validate_tokens.return_value = [30]
+        structured_req.grammar.accept_tokens.return_value = True
+
+        new_token_ids, num_rejected = manager_with_reasoner.precommit_filter_tokens(
+            mock_request_with_structured_output,
+            [10, 20, 30, 40],
+        )
+
+        assert new_token_ids == [10, 20, 30]
+        assert num_rejected == 1
+        structured_req.grammar.validate_tokens.assert_called_once_with([30, 40])
+        structured_req.grammar.accept_tokens.assert_called_once_with("req-0", [30])
+
+    def test_precommit_filter_tokens_does_not_double_advance_structural_tag(
+        self,
+        manager_with_reasoner,
+        mock_request_with_structured_output,
+    ):
+        """Structural-tag spec decode is advanced by should_advance instead."""
+        structured_req = mock_request_with_structured_output.structured_output_request
+        structured_req.reasoning_ended = False
+        structured_req.structured_output_key = (
+            StructuredOutputOptions.STRUCTURAL_TAG,
+            "{}",
+        )
+        reasoner = MockReasoner(tokenizer=Mock())
+        reasoner.is_reasoning_end_streaming.side_effect = (
+            lambda _tokens, delta: delta == [20]
+        )
+        structured_req.reasoner = reasoner
+        structured_req.grammar.validate_tokens.return_value = [30]
+        manager_with_reasoner.vllm_config.speculative_config = Mock()
+
+        new_token_ids, num_rejected = manager_with_reasoner.precommit_filter_tokens(
+            mock_request_with_structured_output,
+            [10, 20, 30, 40],
+        )
+
+        assert new_token_ids == [10, 20, 30]
+        assert num_rejected == 1
+        structured_req.grammar.accept_tokens.assert_not_called()
