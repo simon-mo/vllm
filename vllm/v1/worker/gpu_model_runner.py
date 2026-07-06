@@ -4551,10 +4551,14 @@ class GPUModelRunner(
                     "DFlash speculative decoding is disabled for structured-output "
                     "requests because DFlash drafts are not grammar-constrained."
                 )
-                self._draft_token_ids = [[] for _ in self.input_batch.req_ids]
-                self._draft_token_req_ids = self.input_batch.req_ids.copy()
+                self._draft_token_ids = torch.empty(
+                    (len(self.input_batch.req_ids), 0),
+                    device=self.device,
+                    dtype=torch.int64,
+                )
                 self._draft_probs = None
                 self._draft_prob_req_ids = None
+                self._copy_draft_token_ids_to_cpu(scheduler_output)
             elif use_gpu_toks:
                 # EAGLE/DraftModel speculative decoding can use the GPU sampled tokens
                 # as inputs, and does not need to wait for bookkeeping to finish.
